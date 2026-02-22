@@ -4,6 +4,7 @@ module Api
 
     included do
       before_action :authenticate_api_token
+      after_action :track_api_usage
       attr_reader :current_user
     end
 
@@ -28,6 +29,10 @@ module Api
       # Expected format: "Bearer <token>"
       match = auth_header.match(/\ABearer\s+(.+)\z/i)
       match&.[](1)
+    end
+
+    def track_api_usage
+      ApiUsageRecord.track!(current_user) if current_user
     end
 
     def update_agent_info_from_headers

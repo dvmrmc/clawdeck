@@ -188,12 +188,44 @@ export default class extends Controller {
     this.renderAgentPanel()
     this.scrollAgentToBottom()
 
-    setTimeout(() => {
-      this.typing = false
-      this.messages.push({ type: "agent", text: this.getAgentResponse(text) })
-      this.renderAgentPanel()
-      this.scrollAgentToBottom()
-    }, 1200)
+    const messageType = this.detectMessageType(text)
+    const body = messageType === "ask_agent"
+      ? { message: text, message_type: "ask_agent" }
+      : { message_type: messageType }
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content
+
+    fetch("/agent/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": csrfToken,
+      },
+      body: JSON.stringify(body),
+    })
+      .then(res => {
+        if (!res.ok) throw new Error("Request failed")
+        return res.json()
+      })
+      .then(data => {
+        this.typing = false
+        this.messages.push({ type: "agent", text: data.response })
+        this.renderAgentPanel()
+        this.scrollAgentToBottom()
+      })
+      .catch(() => {
+        this.typing = false
+        this.messages.push({ type: "agent", text: "Something went wrong. Please try again." })
+        this.renderAgentPanel()
+        this.scrollAgentToBottom()
+      })
+  }
+
+  detectMessageType(text) {
+    const t = text.toLowerCase()
+    if (t.includes("focus") || t === "what should i focus on?" || t === "what should i focus on today?") return "focus"
+    if (t.includes("weekly recap") || t === "give me a weekly recap") return "weekly_recap"
+    return "ask_agent"
   }
 
   executeAction(e) {
@@ -209,8 +241,6 @@ export default class extends Controller {
     const prompts = {
       agent: "",
       today: "What should I focus on today?",
-      breakdown: "Break down my top priority task",
-      draft: "Help me draft an announcement post",
       recap: "Give me a weekly recap",
     }
     this.modeValue = "agent"
@@ -237,11 +267,11 @@ export default class extends Controller {
       // Empty state
       this.agentMessagesTarget.innerHTML = `
         <div class="py-5 text-center">
-          <div class="text-[28px] mb-2.5">🤖</div>
-          <div class="text-[13px] font-semibold text-[#666]">Ask me anything about your tasks</div>
-          <div class="text-[11px] font-medium text-[#444] mt-1">I can prioritize, break down tasks, draft content, or recap your week</div>
+          <div class="text-[28px] mb-2.5">⌨️</div>
+          <div class="text-[13px] font-semibold text-[#666]">Query your tasks</div>
+          <div class="text-[11px] font-medium text-[#444] mt-1">Ask about what's overdue, in progress, blocked, or get a summary</div>
           <div class="flex gap-[5px] justify-center mt-4 flex-wrap">
-            ${["What should I focus on?", "Break down top task", "Draft X post", "Weekly recap"].map(q =>
+            ${["What should I focus on?", "Weekly recap"].map(q =>
               `<button data-action="click->command-bar#chipSend" data-prompt="${this.escapeHtml(q)}"
                        class="text-[11px] font-medium py-[5px] px-[11px] rounded-[7px] cursor-pointer text-[#999]"
                        style="background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.10)">${this.escapeHtml(q)}</button>`
@@ -299,27 +329,10 @@ export default class extends Controller {
 
   updateInputPlaceholder() {
     if (this.modeValue === "agent") {
-      this.inputTarget.placeholder = "Ask your agent anything..."
+      this.inputTarget.placeholder = "Ask about your tasks..."
     } else {
-      this.inputTarget.placeholder = "Search cards, ask agent, or take an action..."
+      this.inputTarget.placeholder = "Search cards or run a command..."
     }
-  }
-
-  getAgentResponse(text) {
-    const t = text.toLowerCase()
-    if (t.includes("focus") || t.includes("today") || t.includes("priorit")) {
-      return "Looking at your board, here's what I'd tackle:\n\n1. Review the board limit enforcement card — I've finished it, just needs your eyes\n2. Polar.sh integration — I'm on it but the webhook handler needs your input\n3. RevenueCat for Gratu — this blocks your App Store launch\n\nWant me to move these to In Progress?"
-    }
-    if (t.includes("break") || t.includes("subtask")) {
-      return "I'd break \"Integrate Polar.sh payments\" into:\n\n1. Set up Polar.sh account & products ✅\n2. Implement webhook handler for payment events\n3. Create billing settings page UI\n4. Add subscription status to user model\n5. Test end-to-end payment flow\n\nWant me to add these as subtasks?"
-    }
-    if (t.includes("draft") || t.includes("post") || t.includes("announce")) {
-      return "Here's a draft for tini.bio:\n\n\"🔗 Built this for founders who hate bloated link-in-bio tools.\n\ntini.bio — dead simple. Beautifully minimal.\n\nNo templates. No analytics dashboards. Just your links.\n\nFree → tini.bio\"\n\nWant me to tweak the tone or make it longer?"
-    }
-    if (t.includes("recap") || t.includes("week") || t.includes("summary")) {
-      return "This week across your projects:\n\n🦞 ClawDeck — 7 cards completed, billing flow nearly done\n🔗 tini.bio — 2 cards moved forward, AppSumo still in inbox\n🙏 Gratu — RevenueCat blocked, needs your attention\n📬 nod.so — 1 card, pricing research queued\n\nBiggest win: the agent knocked out 5 ClawDeck tasks autonomously."
-    }
-    return "I can help with that. What specifically would you like me to do?"
   }
 
   escapeHtml(text) {

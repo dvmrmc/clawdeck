@@ -23,7 +23,7 @@
         <input type="text"
                data-command-bar-target="input"
                data-action="input->command-bar#onInput keydown->command-bar#onInputKeydown"
-               placeholder="Search cards, ask agent, or take an action..."
+               placeholder="Search cards or run a command..."
                class="flex-1 bg-transparent border-none text-sm font-medium text-[#e0e0e0] placeholder-[#555] focus:outline-none focus:ring-0"
                style="font-family:inherit" />
         <%# Back button (agent mode only) %>
@@ -47,11 +47,8 @@
           <div style="font-size:10px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:0.06em;padding:6px 10px">Actions</div>
 
           <% [
-            ["add", "+", "Add new card", "Create a task"],
-            ["agent", "🤖", "Ask agent", "Get help from AI"],
-            ["today", "☀️", "What should I focus on?", "Agent prioritizes"],
-            ["breakdown", "📋", "Break down a task", "Split into subtasks"],
-            ["draft", "✍️", "Draft content", "Write posts, emails"],
+            ["agent", "⌨️", "Ask about tasks", "Query your boards"],
+            ["today", "☀️", "What should I focus on?", "Top priorities"],
             ["recap", "📊", "Weekly recap", "Summary of progress"],
           ].each do |action_id, icon, label, hint| %>
             <button type="button"

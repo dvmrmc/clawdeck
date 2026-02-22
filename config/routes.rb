@@ -53,6 +53,9 @@ Rails.application.routes.draw do
     # This will be handled by the controller for proper user scoping
     "/boards"
   }
+  # Agent chat endpoint
+  post "agent/chat", to: "agent#chat"
+
   # Home dashboard (authenticated users)
   get "home", to: "home#show", as: :home
 
