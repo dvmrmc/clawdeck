@@ -247,6 +247,17 @@ export default class extends Controller {
         this.messages.push({ type: "agent", text: data.response })
         this.renderAgentPanel()
         this.scrollAgentToBottom()
+
+        // If task was updated, show indicator and refresh the task panel
+        if (data.task_updated && this.taskContext) {
+          this.messages.push({ type: "system", text: "📝 Task notes updated with the plan." })
+          this.renderAgentPanel()
+          this.scrollAgentToBottom()
+
+          // Reload the task panel in the background
+          const frame = document.querySelector("turbo-frame#task_panel")
+          if (frame) frame.reload()
+        }
       })
       .catch(() => {
         this.typing = false
@@ -338,6 +349,8 @@ export default class extends Controller {
     this.messages.forEach(m => {
       if (m.type === "user") {
         html += `<div class="self-end max-w-[88%] whitespace-pre-wrap" style="padding:9px 13px;border-radius:12px 12px 3px 12px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.08);color:#ddd;font-size:12.5px;line-height:1.55">${this.escapeHtml(m.text)}</div>`
+      } else if (m.type === "system") {
+        html += `<div class="self-center max-w-[88%]" style="padding:6px 12px;border-radius:8px;background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.12);color:#34d399;font-size:11px;font-weight:600;text-align:center">${this.escapeHtml(m.text)}</div>`
       } else {
         html += `<div class="self-start max-w-[88%] whitespace-pre-wrap" style="padding:9px 13px;border-radius:12px 12px 12px 3px;background:rgba(251,191,36,0.05);border:1px solid rgba(251,191,36,0.08);color:#bbb;font-size:12.5px;line-height:1.55">${this.escapeHtml(m.text)}</div>`
       }

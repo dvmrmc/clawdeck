@@ -2,6 +2,11 @@ class AgentController < ApplicationController
   def chat
     @context_task = params[:task_id].present? ? tasks.find_by(id: params[:task_id]) : nil
 
+    # If we have a task context and the user is chatting, proxy to OpenClaw agent
+    if @context_task && params[:message_type] == "ask_agent" && params[:message].present?
+      return proxy_to_openclaw_agent(params[:message].to_s.strip)
+    end
+
     response = case params[:message_type]
     when "focus"
       build_focus_response
@@ -265,6 +270,77 @@ class AgentController < ApplicationController
 
     else
       "Talking about: **#{t.name}** (#{t.status.titleize})\n\nI can help you:\n• Break it down into subtasks\n• Update its status or priority\n• Add notes or context\n• Mark it done\n\nWhat would you like to do?"
+    end
+  end
+
+  # Proxy chat to OpenClaw agent with task context
+  def proxy_to_openclaw_agent(message)
+    t = @context_task
+    gateway_token = "7af12a5f57f0fe096689e4a16dcad100eef77e0cc0fd3b14"
+    clawdeck_token = current_user.api_tokens.first&.token
+
+    # Build context-rich system prompt
+    system_prompt = <<~SYSTEM
+      You are helping plan a task in ClawDeck. Be concise and practical.
+
+      Task ##{t.id}: "#{t.name}"
+      Status: #{t.status} | Priority: #{t.priority || 'none'} | Board: #{t.board&.name}
+      Current notes: #{t.description.present? ? t.description : '(empty)'}
+      #{t.subtasks.any? ? "Subtasks: #{t.subtasks.map { |s| "#{s.done? ? '✅' : '⬜'} #{s.title}" }.join(', ')}" : ''}
+
+      Help the user plan this task. When you produce a plan, format it as structured markdown with clear action items.
+      Keep responses short and actionable. Speak in the same language as the user.
+    SYSTEM
+
+    begin
+      require "net/http"
+      require "json"
+
+      uri = URI("http://127.0.0.1:18789/v1/chat/completions")
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.read_timeout = 60
+
+      request = Net::HTTP::Post.new(uri)
+      request["Content-Type"] = "application/json"
+      request["Authorization"] = "Bearer #{gateway_token}"
+      request.body = {
+        model: "openclaw:main",
+        messages: [
+          { role: "system", content: system_prompt },
+          { role: "user", content: message }
+        ]
+      }.to_json
+
+      response = http.request(request)
+
+      if response.code.to_i == 200
+        data = JSON.parse(response.body)
+        agent_response = data.dig("choices", 0, "message", "content") || "No response."
+
+        # Auto-update task description with the plan if it looks substantial
+        if agent_response.length > 100 && message.downcase.match?(/plan|break|step|acción|desglos|organiz/)
+          new_desc = t.description.present? ? "#{t.description}\n\n---\n\n## Plan de Acción\n\n#{agent_response}" : "## Plan de Acción\n\n#{agent_response}"
+          t.update(description: new_desc)
+
+          render json: {
+            response: agent_response,
+            task_updated: true,
+            task_context: { id: t.id, name: t.name, status: t.status }
+          }
+        else
+          render json: {
+            response: agent_response,
+            task_updated: false,
+            task_context: { id: t.id, name: t.name, status: t.status }
+          }
+        end
+      else
+        Rails.logger.error("OpenClaw API error: #{response.code} #{response.body}")
+        render json: { response: build_task_aware_response(message) }
+      end
+    rescue => e
+      Rails.logger.error("OpenClaw proxy error: #{e.message}")
+      render json: { response: build_task_aware_response(message) }
     end
   end
 end
