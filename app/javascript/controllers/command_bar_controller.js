@@ -207,9 +207,7 @@ export default class extends Controller {
     this.inputTarget.placeholder = `Chat about: ${taskName}`
     this.inputTarget.value = ""
     this.inputTarget.focus()
-
-    // Auto-send task context request
-    this.sendAgentMessage("", "task_context")
+    this.renderAgentPanel()
   }
 
   sendAgentMessage(text, forceType) {
