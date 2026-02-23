@@ -1,5 +1,7 @@
 class AgentController < ApplicationController
   def chat
+    @context_task = params[:task_id].present? ? tasks.find_by(id: params[:task_id]) : nil
+
     response = case params[:message_type]
     when "focus"
       build_focus_response
@@ -7,11 +9,13 @@ class AgentController < ApplicationController
       build_weekly_recap_response
     when "ask_agent"
       build_ask_response(params[:message].to_s.strip)
+    when "task_context"
+      build_task_context_response
     else
       render json: { error: "Invalid message_type" }, status: :unprocessable_entity and return
     end
 
-    render json: { response: response }
+    render json: { response: response, task_context: @context_task&.slice(:id, :name, :status, :priority) }
   end
 
   private
@@ -116,8 +120,54 @@ class AgentController < ApplicationController
     lines.join("\n\n")
   end
 
+  def build_task_context_response
+    return "No task selected." unless @context_task
+
+    t = @context_task
+    lines = []
+    lines << "**#{t.name}**"
+    lines << "Status: #{t.status.titleize} | Priority: #{(t.priority || 'none').titleize}"
+    lines << "Board: #{t.board&.name}"
+    lines << ""
+
+    if t.description.present?
+      lines << "Notes:"
+      lines << t.description
+      lines << ""
+    end
+
+    # Subtasks
+    if t.subtasks.any?
+      done = t.subtasks.count(&:done?)
+      lines << "Subtasks: #{done}/#{t.subtasks.count} done"
+      t.subtasks.each do |s|
+        lines << "#{s.done? ? '✅' : '⬜'} #{s.title}"
+      end
+      lines << ""
+    end
+
+    # Recent activity
+    activities = t.task_activities.order(created_at: :desc).limit(3)
+    if activities.any?
+      lines << "Recent activity:"
+      activities.each do |a|
+        actor = a.actor_type == "agent" ? "🤖 Agent" : "👤 You"
+        lines << "#{actor}: #{a.action} #{a.detail}".strip
+      end
+    end
+
+    lines << ""
+    lines << "What would you like to do with this task? You can ask me to break it down, plan next steps, or update it."
+    lines.join("\n")
+  end
+
   def build_ask_response(message)
     return "Try asking about your tasks, or use the focus and recap actions." if message.blank?
+
+    # If we have task context, prepend it to make responses task-aware
+    if @context_task
+      return build_task_aware_response(message)
+    end
 
     q = message.downcase
 
@@ -185,6 +235,36 @@ class AgentController < ApplicationController
       total_open = tasks.where.not(status: :done).count
       in_progress = tasks.where(status: :in_progress).count
       "You have #{total_open} open tasks, #{in_progress} in progress. Try asking about what's overdue, in progress, blocked, or what your boards look like."
+    end
+  end
+
+  def build_task_aware_response(message)
+    t = @context_task
+    q = message.downcase
+
+    if q.match?(/break.*down|subtask|split|decompose|steps/)
+      "Here's how I'd break down \"#{t.name}\":\n\n1. Research and gather requirements\n2. Draft initial approach\n3. Execute the main work\n4. Review and validate\n5. Mark complete\n\nWant me to create these as subtasks?"
+
+    elsif q.match?(/status|move|progress|update/)
+      statuses = %w[inbox up_next in_progress in_review done]
+      current_idx = statuses.index(t.status) || 0
+      next_status = statuses[[current_idx + 1, statuses.length - 1].min]
+      "Task is currently: #{t.status.titleize}.\nNext logical step: #{next_status.titleize}.\n\nShould I move it forward?"
+
+    elsif q.match?(/priority|urgent|important/)
+      "Current priority: #{(t.priority || 'none').titleize}.\n\nChange to: none, low, medium, or high?"
+
+    elsif q.match?(/done|complete|finish|close/)
+      "I'll mark \"#{t.name}\" as done. ✅"
+
+    elsif q.match?(/block|stuck|help/)
+      "I'll mark this as blocked so it gets attention. What's blocking it?"
+
+    elsif q.match?(/note|description|add|detail/)
+      "Current notes:\n#{t.description.present? ? t.description : '(empty)'}\n\nWhat would you like to add?"
+
+    else
+      "Talking about: **#{t.name}** (#{t.status.titleize})\n\nI can help you:\n• Break it down into subtasks\n• Update its status or priority\n• Add notes or context\n• Mark it done\n\nWhat would you like to do?"
     end
   end
 end

@@ -8,15 +8,19 @@ export default class extends Controller {
   connect() {
     this.boundKeydown = this.globalKeydown.bind(this)
     this.boundToggle = this.toggle.bind(this)
+    this.boundTaskChat = this.openTaskChat.bind(this)
     document.addEventListener("keydown", this.boundKeydown)
     document.addEventListener("command-bar:toggle", this.boundToggle)
+    document.addEventListener("command-bar:open-task-chat", this.boundTaskChat)
     this.messages = []
     this.typing = false
+    this.taskContext = null
   }
 
   disconnect() {
     document.removeEventListener("keydown", this.boundKeydown)
     document.removeEventListener("command-bar:toggle", this.boundToggle)
+    document.removeEventListener("command-bar:open-task-chat", this.boundTaskChat)
   }
 
   globalKeydown(e) {
@@ -55,6 +59,7 @@ export default class extends Controller {
     this.messages = []
     this.typing = false
     this.modeValue = "search"
+    this.taskContext = null
   }
 
   onInputKeydown(e) {
@@ -182,16 +187,46 @@ export default class extends Controller {
     this.sendAgentMessage(text)
   }
 
-  sendAgentMessage(text) {
-    this.messages.push({ type: "user", text })
+  openTaskChat(event) {
+    const { taskId, taskName } = event.detail
+    this.taskContext = { taskId, taskName }
+
+    // Open command bar in agent mode
+    this.openValue = true
+    this.modeValue = "agent"
+    this.messages = []
+    this.typing = false
+    this.dialogTarget.classList.remove("hidden")
+    this.backdropTarget.classList.remove("hidden")
+    this.searchResultsTarget.classList.add("hidden")
+    this.actionsPanelTarget.classList.add("hidden")
+    this.agentPanelTarget.classList.remove("hidden")
+    this.updateModeIcon()
+    if (this.hasBackButtonTarget) this.backButtonTarget.classList.remove("hidden")
+
+    this.inputTarget.placeholder = `Chat about: ${taskName}`
+    this.inputTarget.value = ""
+    this.inputTarget.focus()
+
+    // Auto-send task context request
+    this.sendAgentMessage("", "task_context")
+  }
+
+  sendAgentMessage(text, forceType) {
+    if (text) this.messages.push({ type: "user", text })
     this.typing = true
     this.renderAgentPanel()
     this.scrollAgentToBottom()
 
-    const messageType = this.detectMessageType(text)
+    const messageType = forceType || this.detectMessageType(text)
     const body = messageType === "ask_agent"
       ? { message: text, message_type: "ask_agent" }
       : { message_type: messageType }
+
+    // Include task context if we have it
+    if (this.taskContext) {
+      body.task_id = this.taskContext.taskId
+    }
 
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content
 
@@ -264,20 +299,38 @@ export default class extends Controller {
     if (!this.hasAgentMessagesTarget) return
 
     if (this.messages.length === 0 && !this.typing) {
-      // Empty state
-      this.agentMessagesTarget.innerHTML = `
-        <div class="py-5 text-center">
-          <div class="text-[28px] mb-2.5">⌨️</div>
-          <div class="text-[13px] font-semibold text-[#666]">Query your tasks</div>
-          <div class="text-[11px] font-medium text-[#444] mt-1">Ask about what's overdue, in progress, blocked, or get a summary</div>
-          <div class="flex gap-[5px] justify-center mt-4 flex-wrap">
-            ${["What should I focus on?", "Weekly recap"].map(q =>
-              `<button data-action="click->command-bar#chipSend" data-prompt="${this.escapeHtml(q)}"
-                       class="text-[11px] font-medium py-[5px] px-[11px] rounded-[7px] cursor-pointer text-[#999]"
-                       style="background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.10)">${this.escapeHtml(q)}</button>`
-            ).join("")}
-          </div>
-        </div>`
+      if (this.taskContext) {
+        // Task-focused empty state
+        const chips = ["Break it down", "Update status", "What's next?", "Add notes"]
+        this.agentMessagesTarget.innerHTML = `
+          <div class="py-5 text-center">
+            <div class="text-[28px] mb-2.5">💬</div>
+            <div class="text-[13px] font-semibold text-[#666]">${this.escapeHtml(this.taskContext.taskName)}</div>
+            <div class="text-[11px] font-medium text-[#444] mt-1">Chat about this task — plan, break down, or update</div>
+            <div class="flex gap-[5px] justify-center mt-4 flex-wrap">
+              ${chips.map(q =>
+                `<button data-action="click->command-bar#chipSend" data-prompt="${this.escapeHtml(q)}"
+                         class="text-[11px] font-medium py-[5px] px-[11px] rounded-[7px] cursor-pointer text-[#999]"
+                         style="background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.12)">${this.escapeHtml(q)}</button>`
+              ).join("")}
+            </div>
+          </div>`
+      } else {
+        // Default empty state
+        this.agentMessagesTarget.innerHTML = `
+          <div class="py-5 text-center">
+            <div class="text-[28px] mb-2.5">⌨️</div>
+            <div class="text-[13px] font-semibold text-[#666]">Query your tasks</div>
+            <div class="text-[11px] font-medium text-[#444] mt-1">Ask about what's overdue, in progress, blocked, or get a summary</div>
+            <div class="flex gap-[5px] justify-center mt-4 flex-wrap">
+              ${["What should I focus on?", "Weekly recap"].map(q =>
+                `<button data-action="click->command-bar#chipSend" data-prompt="${this.escapeHtml(q)}"
+                         class="text-[11px] font-medium py-[5px] px-[11px] rounded-[7px] cursor-pointer text-[#999]"
+                         style="background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.10)">${this.escapeHtml(q)}</button>`
+              ).join("")}
+            </div>
+          </div>`
+      }
       return
     }
 

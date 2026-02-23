@@ -4,14 +4,15 @@ export default class extends Controller {
   static values = { taskId: Number, taskName: String }
 
   open() {
-    // Open Telegram deep link to chat with Vladimir about this task
-    const message = `Hablemos sobre la tarea: "${this.taskNameValue}" (task #${this.taskIdValue})`
-    const encoded = encodeURIComponent(message)
-    
-    // Try Telegram bot deep link first (mobile-friendly)
-    const botUsername = "dvmrmc_openclawBot"
-    const telegramUrl = `https://t.me/${botUsername}?text=${encoded}`
-    
-    window.open(telegramUrl, "_blank")
+    // Dispatch a custom event that command_bar_controller listens for
+    // Opens command bar in agent mode with task context
+    const event = new CustomEvent("command-bar:open-task-chat", {
+      detail: {
+        taskId: this.taskIdValue,
+        taskName: this.taskNameValue
+      },
+      bubbles: true
+    })
+    document.dispatchEvent(event)
   }
 }
