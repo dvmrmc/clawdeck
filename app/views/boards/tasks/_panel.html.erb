@@ -64,12 +64,27 @@
               data: { task_modal_target: "nameField", action: "input->task-modal#scheduleAutoSave" } %>
         </div>
 
-        <!-- Notes -->
-        <div style="margin-top:20px">
-          <%= form.text_area :description,
-              placeholder: "Add notes...",
-              style: "width:100%;min-height:120px;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.03);font-size:13px;color:#bbb;resize:vertical;outline:none;line-height:1.6;font-family:inherit",
-              data: { task_modal_target: "descriptionField", action: "input->task-modal#scheduleAutoSave" } %>
+        <!-- Notes (with markdown preview toggle) -->
+        <div style="margin-top:20px" data-controller="markdown-toggle">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span style="font-size:11px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:0.05em">Notes</span>
+            <button type="button" data-action="click->markdown-toggle#toggle" data-markdown-toggle-target="toggleBtn"
+                    style="font-size:10px;font-weight:600;color:#555;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);padding:3px 8px;border-radius:5px;cursor:pointer">
+              Preview
+            </button>
+          </div>
+          <div data-markdown-toggle-target="editor">
+            <%= form.text_area :description,
+                placeholder: "Add notes... (supports **markdown**)",
+                style: "width:100%;min-height:280px;padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.03);font-size:13px;color:#bbb;resize:vertical;outline:none;line-height:1.7;font-family:'SF Mono',Monaco,monospace;font-size:12.5px",
+                data: { task_modal_target: "descriptionField", action: "input->task-modal#scheduleAutoSave", markdown_toggle_target: "textarea" } %>
+          </div>
+          <div data-markdown-toggle-target="preview" class="hidden"
+               style="width:100%;min-height:280px;padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.03);font-size:13px;color:#bbb;line-height:1.7;overflow-y:auto">
+            <div class="markdown-body" style="color:#ccc">
+              <%= render_markdown(task.description) %>
+            </div>
+          </div>
         </div>
 
         <!-- Hidden submit button (triggered programmatically) -->
@@ -168,6 +183,23 @@
             <% end %>
           <% end %>
         </div>
+      </div>
+
+      <!-- Chat with Agent Button -->
+      <div>
+        <button type="button"
+                data-controller="agent-chat"
+                data-action="click->agent-chat#open"
+                data-agent-chat-task-id-value="<%= task.id %>"
+                data-agent-chat-task-name-value="<%= task.name %>"
+                style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;border-radius:10px;background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.15);cursor:pointer;transition:all 0.15s"
+                onmouseenter="this.style.background='rgba(96,165,250,0.14)'"
+                onmouseleave="this.style.background='rgba(96,165,250,0.08)'">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span style="font-size:12px;font-weight:600;color:#60a5fa">Chat with agent about this task</span>
+        </button>
       </div>
 
       <!-- Agent Status Banner -->
